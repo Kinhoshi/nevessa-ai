@@ -1,3 +1,7 @@
+> [!WARNING]
+> THIS TOY AGENT SHOULDN'T BE USED AS-IS. I TAKE NO RESPONSIBILITY FOR ANYTHING SHOULD YOU DISREGARD THIS WARNING.
+> THIS CHATBOT WASN'T MADE WITH SECURITY IN MIND AND WAS JUST USED AS A LEARNING EXERCISE.
+
 # Nevessa AI
 
 Nevessa is an AI-powered coding agent designed to help you with your programming tasks. It can list files, read their contents, execute Python scripts, and even write new files for you.
