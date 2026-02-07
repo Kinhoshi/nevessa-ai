@@ -38,6 +38,7 @@ def main():
                 config_file.close()
     except FileNotFoundError:
         print("Error: 'working_dir_config.ini' not found, creating file now.")
+        open("working_dir_config.ini", "x").close()
     try:
         working_dir_config_contents = open("working_dir_config.ini", "r").read()
         if os.path.isdir(working_dir_config_contents):
@@ -50,23 +51,26 @@ def main():
     if new_chat:
         open("chat.log", "w").close()
         print("Chat history cleared. Starting a new chat.")
-    
-    chat_history = open("chat.log", "r").read()
-    if chat_history is not None:
-        for lines in chat_history.split("\n"):
-                if lines.startswith("Summary:"):
-                    messages.append(types.Content(role="model", parts=[types.Part(text=lines)]))
-                elif lines.startswith("User"):
-                    messages.append(types.Content(role="user", parts=[types.Part(text=lines.lstrip("User: "))]))
-                elif lines.startswith("Nevessa:"):
-                    messages.append(types.Content(role="model", parts=[types.Part(text=lines.lstrip("Nevessa: "))]))
+    try:
+        chat_history = open("chat.log", "r").read()
+        if chat_history is not None:
+            for lines in chat_history.split("\n"):
+                    if lines.startswith("Summary:"):
+                        messages.append(types.Content(role="model", parts=[types.Part(text=lines)]))
+                    elif lines.startswith("User"):
+                        messages.append(types.Content(role="user", parts=[types.Part(text=lines.lstrip("User: "))]))
+                    elif lines.startswith("Nevessa:"):
+                        messages.append(types.Content(role="model", parts=[types.Part(text=lines.lstrip("Nevessa: "))]))
         
-        if args.summarize_history or len(chat_history.split("\n")) >= 100:
-            summary = summarize_history(client, chat_history)
-            print(f"Summary: {summary}")
-            chat_log = open("chat.log", "w")
-            chat_log.write(f"Summary: {summary}\n")
-            messages = [types.Content(role="model", parts=[types.Part(text=summary)])]
+            if args.summarize_history or len(chat_history.split("\n")) >= 100:
+                summary = summarize_history(client, chat_history)
+                print(f"Summary: {summary}")
+                chat_log = open("chat.log", "w")
+                chat_log.write(f"Summary: {summary}\n")
+                messages = [types.Content(role="model", parts=[types.Part(text=summary)])]
+    except FileNotFoundError:
+        print('Error: "chat.log" not found, creating a blank log now.')
+        open("chat.log", "x").close()
 
     messages.append(types.Content(role="user", parts=[types.Part(text=user_prompt)]))
 
