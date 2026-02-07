@@ -12,6 +12,14 @@ Nevessa is an AI-powered coding agent designed to help you with your programming
 *   **Code Execution:** Run Python scripts with optional arguments.
 *   **File Creation/Modification:** Create new files or update existing ones.
 
+## Console Flags
+
+* **--verbose:** Output will include additional details, such as token count, results of function calls made by Nevessa, etc.
+* **--new_chat:** --new_chat will overwrite the contents of "chat.log" (or create the file if non-existent) to a blank slate, effectively erasing Nevessa's memory of prior prompts and responses.
+* **--summarize:** Summarize the contents of "chat.log" into (hopefully) fewer lines and thus less prompt tokens while maintaining memory.
+* **--working_directory:** Text followed --working_directory will be set as your working directory for the functions Nevessa can call during your prompt. 
+
 ## How to Use
 First, create a ".env" file in the root folder and supply it with your Google Gemini API key in the following format: "GEMINI_API_KEY=yourkeyhere"
-Then, simply interact with Nevessa by asking questions or giving commands related to your coding project. Nevessa will assist you by performing the requested operations.
+Then interact with Nevessa by entering a prompt between two double quotes (" ") after the command to run main.py, e.g "python3 main.py "Hello, Nevessa. Can you list the files in the working directory?" --verbose"
+and then Nevessa's response will be printed to the console.

@@ -1,3 +1,4 @@
+import os
 from functions.get_files_info import *
 from functions.get_file_content import *
 from functions.write_file import *
@@ -7,7 +8,11 @@ from google.genai import types
 
 available_functions = types.Tool(function_declarations=[schema_get_files_info, schema_get_file_content, schema_write_file, schema_run_python_file])
 
-def call_function(function_call, verbose=False):
+def call_function(function_call, working_directory, verbose=False):
+    if not os.path.isdir(working_directory):
+        print(f'Error: "{working_directory}" is not a valid directory. Defaulting to Nevessa-AI root directory.')
+        working_directory = os.path.abspath(".")
+
     if verbose:
         print(f"Calling function: {function_call.name}({function_call.args})")
 
@@ -34,7 +39,7 @@ def call_function(function_call, verbose=False):
         )
 
     args = dict(function_call.args) if function_call.args else {}
-    args["working_directory"] = "."
+    args["working_directory"] = working_directory
 
     function_result = function_map[function_name](**args)
 
