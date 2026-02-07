@@ -24,7 +24,7 @@ def main():
     working_directory_arg = args.working_directory
     working_directory = None
     messages = []
-
+    
     try:
         working_dir_config = open("working_dir_config.ini", "r").read()
         if working_directory_arg is not None:
@@ -39,6 +39,7 @@ def main():
     except FileNotFoundError:
         print("Error: 'working_dir_config.ini' not found, creating file now.")
         open("working_dir_config.ini", "x").close()
+
     try:
         working_dir_config_contents = open("working_dir_config.ini", "r").read()
         if os.path.isdir(working_dir_config_contents):
@@ -51,6 +52,7 @@ def main():
     if new_chat:
         open("chat.log", "w").close()
         print("Chat history cleared. Starting a new chat.")
+
     try:
         chat_history = open("chat.log", "r").read()
         if chat_history is not None:
@@ -68,6 +70,7 @@ def main():
                 chat_log = open("chat.log", "w")
                 chat_log.write(f"Summary: {summary}\n")
                 messages = [types.Content(role="model", parts=[types.Part(text=summary)])]
+                
     except FileNotFoundError:
         print('Error: "chat.log" not found, creating a blank log now.')
         open("chat.log", "x").close()
