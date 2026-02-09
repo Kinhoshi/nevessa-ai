@@ -15,13 +15,13 @@ def main():
     parser = argparse.ArgumentParser(description="Nevessa Chatbot")
     parser.add_argument("user_prompt", type=str, help='Please enter a message in quotation marks ("") to send a prompt to Nevessa.')
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    parser.add_argument("--new_chat", action="store_true", help="Start a new chat by clearing the chat history. This will erase Nevessa's memory")
-    parser.add_argument("--working_directory", type=str, help="Set the working directory for file operations")
-    parser.add_argument("--summarize_history", action="store_true", help="Manually summarizes the chat history to cut chat.log down in size and length")
+    parser.add_argument("--new-chat", action="store_true", help="Start a new chat by clearing the chat history. This will erase Nevessa's memory")
+    parser.add_argument("--working-dir", type=str, help="Set the working directory for file operations")
+    parser.add_argument("--summarize", action="store_true", help="Manually summarizes the chat history to cut chat.md down in size and length")
     args = parser.parse_args()
     user_prompt = args.user_prompt
     new_chat = args.new_chat
-    working_directory_arg = args.working_directory
+    working_directory_arg = args.working_dir
     working_directory = None
     messages = []
     
@@ -45,51 +45,95 @@ def main():
         if os.path.isdir(working_dir_config_contents):
             working_directory = working_dir_config_contents
         else:
-            print(f'Error: "{working_dir_config_contents}" does not contain a valid directory. Please pass a valid directory through, using "--working_directory [path]"')
+            print(f'Error: "{working_dir_config_contents}" does not contain a valid directory. Please pass a valid directory through, using "--working-dir [path]"')
     except FileNotFoundError:
-        print("Error: 'working_dir_config.ini' not found. Please create the file and pass a valid directory through, using '--working_directory [path]'")
+        print("Error: 'working_dir_config.ini' not found. Please create the file and pass a valid directory through, using '--working-dir [path]'")
 
     if new_chat:
-        open("chat.log", "w").close()
+        open("chat.md", "w").close()
         print("Chat history cleared. Starting a new chat.")
 
     try:
-        chat_history = open("chat.log", "r").read()
+        chat_history = open("chat.md", "r").read()
         if chat_history is not None:
+            summary_lines = []
+            collecting_summary = False
+            code_block = False
+            code_lines = []
             for lines in chat_history.split("\n"):
-                    if lines.startswith("Summary:"):
-                        messages.append(types.Content(role="model", parts=[types.Part(text=lines)]))
-                    elif lines.startswith("User"):
+                if not collecting_summary and lines.startswith("```"):
+                    code_block = not code_block
+                    code_lines.append(lines)
+
+                elif code_block:
+                    code_lines.append(lines)
+
+                if lines.startswith("Summary:") and not code_block:
+                    collecting_summary = True
+                    summary_lines.append(lines)
+
+                elif lines.startswith("User:") or lines.startswith("Nevessa:"):
+                    if collecting_summary:
+                        messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(summary_lines))]))
+                        summary_lines = []
+                        collecting_summary = False
+                    
+                    if code_block:
+                        messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(code_lines))]))
+                        code_lines = []
+                        code_block = False
+                    
+                    if lines.startswith("User:"):
                         messages.append(types.Content(role="user", parts=[types.Part(text=lines.lstrip("User: "))]))
                     elif lines.startswith("Nevessa:"):
                         messages.append(types.Content(role="model", parts=[types.Part(text=lines.lstrip("Nevessa: "))]))
-        
-            if args.summarize_history or len(chat_history.split("\n")) >= 100:
+
+                elif collecting_summary:
+                    summary_lines.append(lines)
+            
+            if collecting_summary:
+                messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(summary_lines))]))
+
+            if code_block:
+                messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(code_lines))]))
+
+            if args.summarize or len(chat_history.split("\n")) >= 250:
                 summary = summarize_history(client, chat_history)
                 print(f"Summary: {summary}")
-                chat_log = open("chat.log", "w")
-                chat_log.write(f"Summary: {summary}\n")
+                chat_log = open("chat.md", "w")
+                chat_log.write(f"Summary: {summary}\n\n")
                 messages = [types.Content(role="model", parts=[types.Part(text=summary)])]
                 
     except FileNotFoundError:
-        print('Error: "chat.log" not found, creating a blank log now.')
-        open("chat.log", "x").close()
+        print('Error: "chat.md" not found, creating a blank log now.')
+        open("chat.md", "x").close()
 
     messages.append(types.Content(role="user", parts=[types.Part(text=user_prompt)]))
 
     if api_key is None:
         raise RuntimeError("API key cannot be empty!")
 
-    chat_log = open("chat.log", "a")
-    chat_log.write(f"User: {user_prompt}\n")
+    chat_log = open("chat.md", "a")
+    chat_log.write(f"User: {user_prompt}\n\n")
 
     for _ in range(20):
         response = generate_content(client, messages, args.verbose, working_directory)
         if response:
             response_list = response.split("\n")
+            code_block = False
             for line in response_list:
+                if line.startswith("```"):
+                        code_block = not code_block
+                        chat_log.write(line + "\n")
+                        continue
+                if code_block:
+                    chat_log.write(line + "\n")
+                    continue
                 if line.strip() != "":
-                    chat_log.write(f"Nevessa: {line}\n")
+                    chat_log.write(f"Nevessa: {line}\n\n")
+            if code_block:
+                chat_log.write("```\n")
+                code_block = False
             print("Response:") 
             print(response)
             break
@@ -158,10 +202,7 @@ def summarize_history(client, content):
         if summary_query.candidates:
             if summary_query.text is not None:
                 response = summary_query.text
-                summary = response.split("\n")
-                for i in range(len(summary) - 1, -1, -1):
-                    if summary[i].strip() == "":
-                        summary.pop(i)
+                summary = [line for line in response.split("\n") if line.strip()]
                 return "\n".join(summary)
                 
     return "Nothing to summarize."

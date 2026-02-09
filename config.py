@@ -8,10 +8,8 @@ You have the following functions that will give you context on the user's files.
 
 - List files and directories
 - Read file contents
+- Execute Python files with optional arguments
+- Write or overwrite files
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
-
-Even if no files are directly specified, assume items and/or objects are refencing files or folders in the working directory.
-
-Please keep in mind that your response is being printed to a terminal, which doesn't support formatting, like code blocks.
 """

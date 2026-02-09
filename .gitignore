@@ -13,5 +13,5 @@ wheels/
 test_*
 *lorem*
 calculator/
-chat.log
+chat.md
 working_dir_config.ini
