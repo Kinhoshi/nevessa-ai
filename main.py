@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 from config import AI_SYSTEM_PROMPT
 from functions.call_function import *
+from utils.chat_parser import process_chat_history
 
 def main():
     print("Hello from nevessa-ai!")
@@ -21,29 +22,29 @@ def main():
     new_chat = args.new_chat
     working_directory_arg = args.working_dir
     working_directory = None
-    messages = []
 
-    if new_chat:
+    if new_chat: # command line argument that erases the history, effectively giving you a new chat
         open("chat.md", "w").close()
         print("Chat history cleared. Starting a new chat.")
 
     if api_key is None:
         raise RuntimeError("API key cannot be empty!")
 
-    while True:
+    while True: # endless loop for constant chatting!
+
         try:
             user_prompt = input("You: ")
-        except KeyboardInterrupt:
+        except KeyboardInterrupt: # treating keyboardinterrupt as a quit combo
             print("\nExiting chat. Goodbye!")
             sys.exit()
     
-        try:
+        try: # working dir path for function calls, don't want to give it free reign!
             working_dir_config = open("working_dir_config.ini", "r").read()
             if working_directory_arg is not None:
                 working_dir_path = os.path.abspath(working_directory_arg)
                 if not os.path.isdir(working_dir_path):
                     print(f'Error: "{working_directory_arg}" does not exist or is not a valid directory. Defaulting to Nevessa-AI root directory.')
-                    working_directory_arg = "."
+                    working_dir_path = os.path.abspath(".")
                 if working_dir_config != working_dir_path:
                     config_file = open("working_dir_config.ini", "w")
                     config_file.write(working_dir_path)
@@ -52,7 +53,7 @@ def main():
             print("Error: 'working_dir_config.ini' not found, creating file now.")
             open("working_dir_config.ini", "x").close()
 
-        try:
+        try: # making working dir persist between sessions so you don't have to use the command line arg every execution
             working_dir_config_contents = open("working_dir_config.ini", "r").read()
             if os.path.isdir(working_dir_config_contents):
                 working_directory = working_dir_config_contents
@@ -61,70 +62,34 @@ def main():
         except FileNotFoundError:
             print("Error: 'working_dir_config.ini' not found. Please create the file and pass a valid directory through, using '--working-dir [path]'")
 
-        try:
+        try: # open our chat history to send to Gemini for persistent memory
             chat_history = open("chat.md", "r").read()
-            if chat_history is not None:
-                summary_lines = []
-                collecting_summary = False
-                code_block = False
-                code_lines = []
-                for lines in chat_history.split("\n"):
-                    if not collecting_summary and lines.startswith("```"):
-                        code_block = not code_block
-                        code_lines.append(lines)
-
-                    elif code_block:
-                        code_lines.append(lines)
-
-                    if lines.startswith("Summary:") and not code_block:
-                        collecting_summary = True
-                        summary_lines.append(lines)
-
-                    elif lines.startswith("User:") or lines.startswith("Nevessa:"):
-                        if collecting_summary:
-                            messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(summary_lines))]))
-                            summary_lines = []
-                            collecting_summary = False
-                    
-                        if code_block:
-                            messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(code_lines))]))
-                            code_lines = []
-                            code_block = False
-                    
-                        if lines.startswith("User:"):
-                            messages.append(types.Content(role="user", parts=[types.Part(text=lines.lstrip("User: "))]))
-                        elif lines.startswith("Nevessa:"):
-                            messages.append(types.Content(role="model", parts=[types.Part(text=lines.lstrip("Nevessa: "))]))
-
-                    elif collecting_summary:
-                        summary_lines.append(lines)
-            
-                if collecting_summary:
-                    messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(summary_lines))]))
-
-                if code_block:
-                    messages.append(types.Content(role="model", parts=[types.Part(text="\n".join(code_lines))]))
-
-                if args.summarize or len(chat_history.split("\n")) >= 250:
-                    summary = summarize_history(client, chat_history)
-                    print(f"Summary: {summary}")
-                    chat_log = open("chat.md", "w")
+            should_summarize = args.summarize or len(chat_history.split("\n")) >= 250
+            if should_summarize:
+                summary = summarize_history(client, chat_history)
+                print(f"Summary: {summary}")
+                with open("chat.md", "w") as chat_log:
                     chat_log.write(f"Summary: {summary}\n\n")
-                    messages = [types.Content(role="model", parts=[types.Part(text=summary)])]
-                
-        except FileNotFoundError:
-            print('Error: "chat.md" not found, creating a blank log now.')
-            open("chat.md", "x").close()
+                chat_history = open("chat.md", "r").read()
 
-        messages.append(types.Content(role="user", parts=[types.Part(text=user_prompt)]))
+            messages = process_chat_history(chat_history)
+            if not messages:
+                messages = []
+                
+        except FileNotFoundError: # creates a blank chat.md if not found
+            print('Error: "chat.md" not found, creating a blank log now.')
+            with open("chat.md", "x"):
+                pass
+
+        messages.append(types.Content(role="user", parts=[types.Part(text=user_prompt)])) # making sure our prompt is the last thing appended, until the response
 
         chat_log = open("chat.md", "a")
-        chat_log.write(f"User: {user_prompt}\n\n")
+        chat_log.write(f"User: {user_prompt}\n\n") # store our prompt and append it to chat.md for presistent memory
 
-        for _ in range(20):
-            response = generate_content(client, messages, args.verbose, working_directory)
+        for _ in range(20): # for loop to help prevent Nevessa from endlessly making function calls
+            response = generate_content(client, messages, args.verbose, working_directory) # inital response generation using our prompt and arguments
             if response:
-                response_list = response.split("\n")
+                response_list = response.split("\n") # logic for storing Nevessa's response with code blocks and also stripping blank lines if code_block is false
                 code_block = False
                 for line in response_list:
                     if line.startswith("```"):
