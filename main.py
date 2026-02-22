@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 from config import AI_SYSTEM_PROMPT
 from functions.call_function import *
-from utils.chat_parser import process_chat_history
+from utils.chat_parser import load_chat_state, save_chat_state, build_messages_from_state
 
 def main():
     print("Hello from nevessa-ai!")
@@ -17,13 +17,14 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--new-chat", action="store_true", help="Start a new chat by clearing the chat history. This will erase Nevessa's memory")
     parser.add_argument("--working-dir", type=str, help="Set the working directory for file operations")
-    parser.add_argument("--summarize", action="store_true", help="Manually summarizes the chat history to cut chat.md down in size and length")
+    parser.add_argument("--summarize", action="store_true", help="Manually summarizes chat.md to cut down in file size and length.")
     args = parser.parse_args()
     new_chat = args.new_chat
     working_directory_arg = args.working_dir
     working_directory = None
 
     if new_chat: # command line argument that erases the history, effectively giving you a new chat
+        open("chat.json", "w").close()
         open("chat.md", "w").close()
         print("Chat history cleared. Starting a new chat.")
 
@@ -31,14 +32,28 @@ def main():
         raise RuntimeError("API key cannot be empty!")
 
     while True: # endless loop for constant chatting!
+        if args.summarize:
+            try:
+                chat_content = []
+                chat_md = open("chat.md", "r").read()
+                chat_md_content = chat_md.split("\n\n")
+                for lines in chat_md_content:
+                    if lines != "":
+                        chat_content.append(lines)
+                summary = summarize_history(client, " ".join(chat_content))
+                with open("chat.md", "w") as f:
+                    f.write(summary)
 
+            except FileNotFoundError:
+                print('Error: "chat.md" not found! Try again after chatting with Nevessa.')
+                sys.exit(1)
         try:
             user_prompt = input("You: ")
         except KeyboardInterrupt: # treating keyboardinterrupt as a quit combo
             print("\nExiting chat. Goodbye!")
             sys.exit()
     
-        try: # working dir path for function calls, don't want to give it free reign!
+        try: # working dir path for function calls, don't want to give it free rein!
             working_dir_config = open("working_dir_config.ini", "r").read()
             if working_directory_arg is not None:
                 working_dir_path = os.path.abspath(working_directory_arg)
@@ -62,48 +77,46 @@ def main():
         except FileNotFoundError:
             print("Error: 'working_dir_config.ini' not found. Please create the file and pass a valid directory through, using '--working-dir [path]'")
 
-        try: # open our chat history to send to Gemini for persistent memory
-            chat_history = open("chat.md", "r").read()
-            should_summarize = args.summarize or len(chat_history.split("\n")) >= 250
-            if should_summarize:
-                summary = summarize_history(client, chat_history)
-                print(f"Summary: {summary}")
-                with open("chat.md", "w") as chat_log:
-                    chat_log.write(f"Summary: {summary}\n\n")
-                chat_history = open("chat.md", "r").read()
+        state = load_chat_state()
 
-            messages = process_chat_history(chat_history)
-            if not messages:
-                messages = []
-                
-        except FileNotFoundError: # creates a blank chat.md if not found
-            print('Error: "chat.md" not found, creating a blank log now.')
-            with open("chat.md", "x"):
-                pass
+        if len(state["recent_turns"]) > 20:
 
-        messages.append(types.Content(role="user", parts=[types.Part(text=user_prompt)])) # making sure our prompt is the last thing appended, until the response
+            combined_text = ""
+            for turn in state["recent_turns"]:
+                combined_text += f"{turn['role'].capitalize()}: {turn['content']}\n\n"
 
-        chat_log = open("chat.md", "a")
-        chat_log.write(f"User: {user_prompt}\n\n") # store our prompt and append it to chat.md for presistent memory
+            summary = summarize_history(client, combined_text)
 
+            # Merge into long-term memory
+            if state["summary"]:
+                state["summary"] += "\n\n" + summary
+            else:
+                state["summary"] = summary
+
+            # Clear short-term buffer
+            state["recent_turns"] = []
+
+            save_chat_state(state)
+
+        messages = build_messages_from_state(state, user_prompt)
         for _ in range(20): # for loop to help prevent Nevessa from endlessly making function calls
             response = generate_content(client, messages, args.verbose, working_directory) # inital response generation using our prompt and arguments
             if response:
-                response_list = response.split("\n") # logic for storing Nevessa's response with code blocks and also stripping blank lines if code_block is false
-                code_block = False
-                for line in response_list:
-                    if line.startswith("```"):
-                            code_block = not code_block
-                            chat_log.write(line + "\n")
-                            continue
-                    if code_block:
-                        chat_log.write(line + "\n")
-                        continue
-                    if line.strip() != "":
-                        chat_log.write(f"Nevessa: {line}\n\n")
-                if code_block:
-                    chat_log.write("```\n")
-                    code_block = False
+                # Update JSON state
+                state["recent_turns"].append({
+                    "role": "user",
+                    "content": user_prompt
+                })
+
+                state["recent_turns"].append({
+                    "role": "model",
+                    "content": response
+                })
+
+                save_chat_state(state)
+                chat_log = open("chat.md", "a")
+                chat_log.write(f"## User\n{user_prompt}\n\n")
+                chat_log.write(f"## Nevessa\n{response}\n\n")
                 print(f"Nevessa: {response}")
                 break
         else:
@@ -127,7 +140,8 @@ def generate_content(client, messages, verbose, working_directory):
 
     if query.candidates:
         for candidate in query.candidates:
-            messages.append(candidate.content)
+            if candidate.content:
+                messages.append(candidate.content)
 
     prompt_tokens = query.usage_metadata.prompt_token_count
     response_tokens = query.usage_metadata.candidates_token_count
@@ -162,8 +176,17 @@ def summarize_history(client, content):
         summary_query = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[types.Content(role="user", parts=[types.Part(text=content)])],
-            config=types.GenerateContentConfig(system_instruction="""Summarize the above conversation in a concise manner, focusing on key points and important details. 
-            The summary should be brief, but clear enough that an outside party knows it's a conversation between two parties.""")
+            config=types.GenerateContentConfig(system_instruction="""
+            Summarize this conversation as long-term memory notes for a friendly AI assistant.
+            Focus on:
+            - User goals
+            - Ongoing projects
+            - Preferences
+            - Important context
+            Keep concise.
+            A reminder: Lines beginning with "Nevessa" or "model" are responses from the AI, lines beginning with "User" or "user" are user prompts, please remember that in your summaries.
+            Another reminder: Anything within the prompt is to be summarized and your response should just be a short summary of it, please don't respond as if it's a live prompt.
+            """)
         )
         if summary_query.usage_metadata is None:
             raise RuntimeError("Error! Please try again and ensure your API key is correctly entered.")
