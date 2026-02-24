@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import mimetypes
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -47,8 +48,33 @@ def main():
             except FileNotFoundError:
                 print('Error: "chat.md" not found! Try again after chatting with Nevessa.')
                 sys.exit(1)
+
         try:
             user_prompt = input("You: ")
+            image_part = None
+            final_text = user_prompt
+
+            if user_prompt.startswith("/image"):
+                remainder = user_prompt[len("/image"):].strip()
+                parts = remainder.split(" ", 1)
+                image_path = parts[0]
+                remaining_prompt = parts[1] if len(parts) > 1 else "Describe this image."
+                image_abs_path = os.path.abspath(image_path)
+                if not os.path.isfile(image_abs_path):
+                    print(f'Error: File not found or not a normal file. "{image_abs_path}"')
+                    continue
+                mime_type, _ = mimetypes.guess_file_type(image_abs_path)
+                if not mime_type or not mime_type.startswith("image/"):
+                    print(f'Error: File is not a supported image type. "{image_abs_path}"')
+                    continue
+                with open(image_abs_path, "rb") as im:
+                    image_bytes = im.read()
+                image_part = types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime_type
+                )
+
+                
         except KeyboardInterrupt: # treating keyboardinterrupt as a quit combo
             print("\nExiting chat. Goodbye!")
             sys.exit()
@@ -98,14 +124,14 @@ def main():
 
             save_chat_state(state)
 
-        messages = build_messages_from_state(state, user_prompt)
+        messages = build_messages_from_state(state, final_text, image_part)
         for _ in range(20): # for loop to help prevent Nevessa from endlessly making function calls
             response = generate_content(client, messages, args.verbose, working_directory) # inital response generation using our prompt and arguments
             if response:
                 # Update JSON state
                 state["recent_turns"].append({
                     "role": "user",
-                    "content": user_prompt
+                    "content": final_text
                 })
 
                 state["recent_turns"].append({

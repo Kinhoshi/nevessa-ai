@@ -26,7 +26,7 @@ def save_chat_state(state):
         json.dump(state, f, indent=2)
 
 
-def build_messages_from_state(state, current_user_prompt):
+def build_messages_from_state(state, current_user_prompt, image_part):
     messages = []
 
     # Inject persistent memory as background context
@@ -52,10 +52,15 @@ def build_messages_from_state(state, current_user_prompt):
         )
 
     # Current user message must be last
+    parts = [types.Part(text=current_user_prompt)]
+
+    if image_part is not None:
+        parts.append(image_part)
+
     messages.append(
         types.Content(
             role="user",
-            parts=[types.Part(text=current_user_prompt)]
+            parts=parts
         )
     )
 
