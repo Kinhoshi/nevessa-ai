@@ -106,6 +106,14 @@ def main():
         state = load_chat_state()
 
         if len(state["recent_turns"]) > 20:
+            chat_md = []
+            chat_md_content = open("chat.md", "r").read()
+            for lines in chat_md_content.split("\n\n"):
+                if lines != "":
+                    chat_md.append(lines)
+            summarize_chat_md = summarize_history(client, " ".join(chat_md))
+            with open("chat.md", "w") as f:
+                f.write(summarize_chat_md + "\n\n")
 
             combined_text = ""
             for turn in state["recent_turns"]:
