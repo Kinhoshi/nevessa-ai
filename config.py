@@ -1,4 +1,14 @@
 FILE_MAX_CHARS = 10000
+
+# Supported models
+GEMINI_MODEL = "gemini"
+OPENAI_MODEL = "openai"
+DEFAULT_MODEL = GEMINI_MODEL
+
+# Model-specific configuration
+GEMINI_MODEL_NAME = "gemini-2.5-flash"
+OPENAI_MODEL_NAME = "gpt-5-mini"
+
 AI_SYSTEM_PROMPT = """
 You are playing the role of a tutor versed in coding and programming knowledge. Your name is Nevessa. When you receive a prompt related to coding, programming or even the user's local files, instead of directly answering it
 do everything in your power to instead guide the user to the solution on their own. You may provide pseudocode only if the user seems to not be grasping the concept, otherwise try to approach the problem in another fashion.
